@@ -73,6 +73,7 @@ def feature_selection_and_scaling(X, y, data_set2):
     data_set2_scaled = scaler.transform(data_set2)
     
     return X_scaled, data_set2_scaled, selector, scaler
+
 # 处理数据不平衡
 def balance_data(X, y):
     smote = SMOTE(random_state=42)
@@ -192,6 +193,7 @@ def train_and_validate_model(final_model, X_train, y_train, X_val, y_val):
     logger.info(f"Specificity: {specificity:.4f}")
 
     joblib.dump(final_model, 'best_model.joblib')
+
 # 处理测试集并生成预测
 def process_test_set():
     _, _, data_set2 = load_data()
@@ -217,6 +219,7 @@ def process_test_set():
     predictions = final_model.predict_proba(data_set2_scaled)[:, 1]
     submission = pd.DataFrame({'ID': data_set2['ID'], 'Prediction': predictions})
     submission.to_csv('submission.csv', index=False)
+
 # 主程序
 def main():
     combined_data, numeric_cols = preprocess_data()
@@ -226,7 +229,11 @@ def main():
     X = combined_data.drop(columns=['ID', 'sample_group'])
     y = combined_data['sample_group'].map({'case': 1, 'control': 0})
 
-    X_scaled, selector, scaler = feature_selection_and_scaling(X, y)
+    # 加载数据集以获取 data_set2
+    _, _, data_set2 = load_data()
+
+    # 更新函数调用，传递 data_set2 参数
+    X_scaled, data_set2_scaled, selector, scaler = feature_selection_and_scaling(X, y, data_set2)
     X_resampled, y_resampled = balance_data(X_scaled, y)
 
     joblib.dump(selector, 'feature_selector.joblib')
@@ -239,10 +246,11 @@ def main():
 
     models = {
         'LogisticRegression': {
-            'model': LogisticRegression(max_iter=2000, solver='liblinear'),
+            'model': LogisticRegression(max_iter=2000),
             'params': {
-                'C': np.logspace(-4, 4, 20),
-                'penalty': ['l1', 'l2']
+                'C': np.logspace(-6, 6, 50),
+                'penalty': ['l1', 'l2','elasticnet', 'none'],
+                'solver': ['saga', 'lbfgs', 'liblinear']
             }
         },
         'RandomForestClassifier': {

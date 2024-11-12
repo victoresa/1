@@ -50,13 +50,29 @@ def batched_iterative_impute(df, imputer, batch_size=500):
     return imputed_df
 
 # 特征选择和标准化
-def feature_selection_and_scaling(X, y):
+def feature_selection_and_scaling(X, y, data_set2):
+    # 先筛选出共同的特征
+    common_features = set(X.columns) & set(data_set2.columns)
+    common_features = list(common_features)
+    X = X[common_features]
+    data_set2 = data_set2[common_features]
+    
+    # 进行特征选择
     selector = SelectKBest(score_func=f_classif, k=2000)
     X_selected = selector.fit_transform(X, y)
+    selected_features = selector.get_feature_names_out()
+    
+    # 确保 data_set2 只包含选择的特征
+    data_set2 = data_set2[selected_features]
+    
+    # 标准化
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_selected)
-    return X_scaled, selector, scaler
-
+    
+    # 对 data_set2 进行相同的标准化处理
+    data_set2_scaled = scaler.transform(data_set2)
+    
+    return X_scaled, data_set2_scaled, selector, scaler
 # 处理数据不平衡
 def balance_data(X, y):
     smote = SMOTE(random_state=42)
@@ -176,33 +192,31 @@ def train_and_validate_model(final_model, X_train, y_train, X_val, y_val):
     logger.info(f"Specificity: {specificity:.4f}")
 
     joblib.dump(final_model, 'best_model.joblib')
-
 # 处理测试集并生成预测
 def process_test_set():
     _, _, data_set2 = load_data()
     selector = joblib.load('feature_selector.joblib')
-    imputer = joblib.load('imputer.joblib')
     scaler = joblib.load('scaler.joblib')
     final_model = joblib.load('best_model.joblib')
 
     selected_features = selector.get_feature_names_out()
     data_set2_features = data_set2.drop(columns=['ID'])
+
+    # 只选择共同的特征
     common_features = set(selected_features) & set(data_set2_features.columns)
     common_features = list(common_features)
     data_set2_features = data_set2_features[common_features]
 
-    missing_cols = set(selected_features) - set(data_set2_features.columns)
-    for col in missing_cols:
-        data_set2_features[col] = 0
+    # 确保特征顺序与 selected_features 一致
+    data_set2_features = data_set2_features.reindex(columns=selected_features, fill_value=0)
 
-    data_set2_features = data_set2_features[selected_features]
-    data_set2_features = imputer.transform(data_set2_features)
+    # 标准化
     data_set2_scaled = scaler.transform(data_set2_features)
 
+    # 生成预测
     predictions = final_model.predict_proba(data_set2_scaled)[:, 1]
     submission = pd.DataFrame({'ID': data_set2['ID'], 'Prediction': predictions})
     submission.to_csv('submission.csv', index=False)
-
 # 主程序
 def main():
     combined_data, numeric_cols = preprocess_data()
